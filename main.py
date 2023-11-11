@@ -32,7 +32,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 def get_data_service():
 
     config = {
-        "data_directory": "/Users/donaldferguson/Dropbox/0-Examples/e6156-f23-template/data",
+        "data_directory": "data",
         "data_file": "students.json"
     }
 
