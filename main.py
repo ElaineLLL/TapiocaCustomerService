@@ -1,118 +1,131 @@
-#
-# FastAPI is a framework and library for implementing REST web services in Python.
-# https://fastapi.tiangolo.com/
-#
-from fastapi import FastAPI, Response, HTTPException
+from sqlalchemy import create_engine, URL, select, Table, MetaData, Column, Integer, String, UniqueConstraint
+from fastapi import FastAPI, Response, HTTPException, Depends
 from fastapi.responses import RedirectResponse
-
 from fastapi.staticfiles import StaticFiles
 from typing import List, Union
-
+from sqlalchemy.orm import Session, declarative_base
+from pydantic import BaseModel
+# from sqlalchemy.ext.declarative import declarative_base
 # I like to launch directly and not use the standard FastAPI startup process.
 # So, I include uvicorn
 import uvicorn
 
-
-from resources.students.students_resource import StudentsResource
-from resources.students.students_data_service import StudentDataService
-from resources.students.student_models import StudentModel, StudentRspModel
-from resources.schools.school_models import SchoolRspModel, SchoolModel
-from resources.schools.schools_resource import SchoolsResource
-
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+sql_database_url = URL.create(
+    drivername="mysql",
+    username="admin",
+    password="Stargod08122",
+    host="database-1.caogqwqgw2no.us-east-1.rds.amazonaws.com",
+    database="Tapioca",
+    port=3306
+)
+Base = declarative_base()
 
+# engine = create_engine(sql_database_url)
+# # Assuming you have a MetaData object that reflects your database
+# metadata = MetaData()
+# metadata.bind = engine
+# metadata.reflect(engine)
+# print("All tables:", metadata.tables.keys())
+# customer_table = Table('Customer', metadata, autoload=True, autoload_with=engine)
 
-# ******************************
-#
-# DFF TODO Show the class how to do this with a service factory instead of hard code.
-
-
-def get_data_service():
-
-    config = {
-        "data_directory": "data",
-        "data_file": "students.json"
-    }
-
-    ds = StudentDataService(config)
-    return ds
-
-
-def get_student_resource():
-    ds = get_data_service()
-    config = {
-        "data_service": ds
-    }
-    res = StudentsResource(config)
-    return res
-
-
-students_resource = get_student_resource()
-
-schools_resource = SchoolsResource(config={"students_resource": students_resource})
-
-
-#
-# END TODO
-# **************************************
-
+engine = create_engine(sql_database_url)
+# Create tables
+Base.metadata.create_all(bind=engine)
+def get_db():
+    db = Session(engine)
+    try:
+        yield db
+    finally:
+        db.close()
+class Customer(Base):
+    __tablename__ = "Customer"
+    CustomerID = Column(Integer, primary_key=True, autoincrement=True)
+    Name = Column(String, nullable=False)
+    Email = Column(String, unique=True, nullable=False)
+    Phone = Column(String, unique=True, nullable=False)
 
 @app.get("/")
-async def root():
-    return RedirectResponse("/static/index.html")
-
-
-@app.get("/students", response_model=List[StudentRspModel])
-async def get_students(uni: str = None, last_name: str = None, school_code: str = None):
+async def default(db: Session = Depends(get_db)):
     """
-    Return a list of students matching a query string.
-
-    - **uni**: student's UNI
-    - **last_name**: student's last name
-    - **school_code**: student's school.
+    Return all customers
     """
-    result = students_resource.get_students(uni, last_name, school_code)
-    return result
-
-
-@app.get("/students/{uni}", response_model=Union[StudentRspModel, None])
-async def get_student(uni: str):
+    customers = db.query(Customer).all()
+    return customers
+    
+@app.get("/api/customer/{customer_id}", response_model=None)
+async def read_customer(customer_id: int, db: Session = Depends(get_db)):
     """
-    Return a student based on UNI.
+    Retrieve customer by ID.
 
-    - **uni**: student's UNI
+    :param customer_id: Customer ID.
+    :param db: Database session.
+    :return: Customer data.
     """
-    result = None
-    result = students_resource.get_students(uni)
-    if len(result) == 1:
-        result = result[0]
-    else:
-        raise HTTPException(status_code=404, detail="Not found")
+    print("this customer id", customer_id)
+    customer = db.query(Customer).filter_by(CustomerID=customer_id).first()
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return customer
 
-    return result
+    # select_query = select(customer_table.c.Name, customer_table.c.Email, customer_table.c.Phone).where(customer_table.c.CustomerID == customer_id)
+    # # Execute the query and fetch the result
+    # with engine.connect() as connection:
+    #     result = connection.execute(select_query)
+    #     customer = result.fetchone()
+    #     # rows = result.fetchall()
+    #     print(customer)
+    # if customer is None:
+    #     raise HTTPException(status_code=404, detail="Customer not found")
+    # return {"CustomerID": customer_id, "Name": customer[0], "Email": customer[1], "Phone": customer[2]}
 
-
-@app.get("/schools", response_model=List[SchoolRspModel])
-async def get_schools():
+class CustomerCreate(BaseModel):
+    Name: str
+    Email: str
+    Phone: str
+class CustomerResponse(BaseModel):
+    CustomerID: int
+    Name: str
+    Email: str
+    Phone: str
+@app.post("/api/customer/", response_model=CustomerResponse)
+async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     """
-    Return a list of schools.
+    Create a new customer.
+
+    :param customer: Customer data.
+    :param db: Database session.
+    :return: Created customer data.
     """
-    result = schools_resource.get_schools()
-    return result
+    customer = Customer(**customer.dict())
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+    return customer
 
+# Update customer by ID
+@app.put("/api/customer/{customer_id}", response_model=CustomerResponse)
+def update_customer(customer_id: int, customer: CustomerCreate, db: Session = Depends(get_db)):
+    db_customer = db.query(Customer).filter_by(CustomerID=customer_id).first()
+    if db_customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
 
-@app.get("/schools/{school_code}/students", response_model=List[StudentRspModel])
-async def get_schools_students(school_code, uni=None, last_name=None):
-    """
-    Return a list of schools.
-    """
-    result = schools_resource.get_schools_students(school_code, uni, last_name)
-    return result
+    for field, value in customer.dict().items():
+        setattr(db_customer, field, value)
 
+    db.commit()
+    db.refresh(db_customer)
+    return CustomerResponse(**db_customer.__dict__)
 
-
-
+# Delete customer by ID
+@app.delete("/api/customer/{customer_id}", response_model=CustomerResponse)
+def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+    db_customer = db.query(Customer).filter_by(CustomerID=customer_id).first()
+    if db_customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    db.delete(db_customer)
+    db.commit()
+    return CustomerResponse(**db_customer.__dict__)
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8011)
