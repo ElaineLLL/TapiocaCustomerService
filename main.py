@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, URL, select, Table, MetaData, Column, Integer, String, UniqueConstraint
-from fastapi import FastAPI, Response, HTTPException, Depends
+from fastapi import FastAPI, Response, HTTPException, Depends, Query
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List, Union
@@ -39,6 +39,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 class Customer(Base):
     __tablename__ = "Customer"
     CustomerID = Column(Integer, primary_key=True, autoincrement=True)
@@ -46,7 +47,17 @@ class Customer(Base):
     Email = Column(String, unique=True, nullable=False)
     Phone = Column(String, unique=True, nullable=False)
 
-@app.get("/")
+class CustomerCreate(BaseModel):
+    Name: str
+    Email: str
+    Phone: str
+
+class CustomerResponse(BaseModel):
+    CustomerID: int
+    Name: str
+    Email: str
+    Phone: str
+@app.get("/", response_model=List[CustomerResponse])
 async def default(db: Session = Depends(get_db)):
     """
     Return all customers
@@ -54,7 +65,16 @@ async def default(db: Session = Depends(get_db)):
     customers = db.query(Customer).all()
     return customers
     
-@app.get("/api/customer/{customer_id}", response_model=None)
+@app.get("/api/customers/", response_model=List[CustomerResponse])
+async def get_all_customers(
+    skip: int = Query(0, description="Skip the first N items", ge=0),
+    limit: int = Query(5, description="Limit the number of items to retrieve", le=100),
+    db: Session = Depends(get_db)
+):
+    customers = db.query(Customer).offset(skip).limit(limit).all()
+    return customers
+
+@app.get("/api/customer/{customer_id}", response_model=CustomerResponse)
 async def read_customer(customer_id: int, db: Session = Depends(get_db)):
     """
     Retrieve customer by ID.
@@ -80,15 +100,7 @@ async def read_customer(customer_id: int, db: Session = Depends(get_db)):
     #     raise HTTPException(status_code=404, detail="Customer not found")
     # return {"CustomerID": customer_id, "Name": customer[0], "Email": customer[1], "Phone": customer[2]}
 
-class CustomerCreate(BaseModel):
-    Name: str
-    Email: str
-    Phone: str
-class CustomerResponse(BaseModel):
-    CustomerID: int
-    Name: str
-    Email: str
-    Phone: str
+
 @app.post("/api/customer/", response_model=CustomerResponse)
 async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     """
