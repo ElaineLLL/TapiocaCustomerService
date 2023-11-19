@@ -1,0 +1,130 @@
+openapi: 3.1.0
+info:
+  title: FastAPI Customer Service
+  description: CRUD operations for managing customer data
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8011
+    description: Local development server
+security:
+  - your_custom_auth_id: []
+paths:
+  /:
+    get:
+      summary: Get a list of customers
+      description: Retrieve a list of customers with optional pagination.
+      parameters:
+        - in: query
+          name: skip
+          description: Number of items to skip
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          description: Number of items to retrieve, max is 5
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              example: |
+                [
+                  {"CustomerID": 1, "Name": "John Doe", "Email": "john@example.com", "Phone": "123-456-7890"},
+                  {"CustomerID": 2, "Name": "Jane Smith", "Email": "jane@example.com", "Phone": "987-654-3210"}
+                ]
+
+  /api/customer/{customer_id}:
+    get:
+      summary: Get customer by ID
+      description: Retrieve customer details by specifying the customer ID.
+      parameters:
+        - in: path
+          name: customer_id
+          description: ID of the customer to retrieve
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              example: {"CustomerID": 1, "Name": "John Doe", "Email": "john@example.com", "Phone": "123-456-7890"}
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              example: {"detail": "Customer not found"}
+
+    post:
+      summary: Create a new customer
+      description: Create a new customer with the provided data.
+      requestBody:
+        content:
+          application/json:
+            example: {"Name": "New Customer", "Email": "new@example.com", "Phone": "555-1234"}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              example: {"CustomerID": 3, "Name": "New Customer", "Email": "new@example.com", "Phone": "555-1234"}
+
+    put:
+      summary: Update customer by ID
+      description: Update an existing customer by specifying the customer ID and providing updated data.
+      parameters:
+        - in: path
+          name: customer_id
+          description: ID of the customer to update
+          schema:
+            type: integer
+          required: true
+      requestBody:
+        content:
+          application/json:
+            example: {"Name": "Updated Customer", "Email": "updated@example.com", "Phone": "555-4321"}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              example: {"CustomerID": 3, "Name": "Updated Customer", "Email": "updated@example.com", "Phone": "555-4321"}
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              example: {"detail": "Customer not found"}
+
+    delete:
+      summary: Delete customer by ID
+      description: Delete an existing customer by specifying the customer ID.
+      parameters:
+        - in: path
+          name: customer_id
+          description: ID of the customer to delete
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              example: {"CustomerID": 3, "Name": "Updated Customer", "Email": "updated@example.com", "Phone": "555-4321"}
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              example: {"detail": "Customer not found"}
+securityDefinitions:
+  your_custom_auth_id:
+    authorizationUrl: ""
+    flow: "implicit"
+    type: "oauth2"
+    # The value below should be unique
+    x-google-issuer: "issuer of the token"
+    x-google-jwks_uri: "url to the public key"

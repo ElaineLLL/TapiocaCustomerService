@@ -1,16 +1,15 @@
-from sqlalchemy import create_engine, URL, select, Table, MetaData, Column, Integer, String, UniqueConstraint
+from sqlalchemy import create_engine, URL, select, Table, MetaData, Column, Integer, String, UniqueConstraint,ForeignKey,DateTime,Float
 from fastapi import FastAPI, Response, HTTPException, Depends, Query
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List, Union
 from sqlalchemy.orm import Session, declarative_base
 from pydantic import BaseModel
+from datetime import datetime
 # from sqlalchemy.ext.declarative import declarative_base
 # I like to launch directly and not use the standard FastAPI startup process.
 # So, I include uvicorn
 import uvicorn
-
-app = FastAPI()
 
 sql_database_url = URL.create(
     drivername="mysql",
@@ -20,19 +19,12 @@ sql_database_url = URL.create(
     database="Tapioca",
     port=3306
 )
+
 Base = declarative_base()
-
-# engine = create_engine(sql_database_url)
-# # Assuming you have a MetaData object that reflects your database
-# metadata = MetaData()
-# metadata.bind = engine
-# metadata.reflect(engine)
-# print("All tables:", metadata.tables.keys())
-# customer_table = Table('Customer', metadata, autoload=True, autoload_with=engine)
-
 engine = create_engine(sql_database_url)
 # Create tables
 Base.metadata.create_all(bind=engine)
+
 def get_db():
     db = Session(engine)
     try:
@@ -47,6 +39,23 @@ class Customer(Base):
     Email = Column(String, unique=True, nullable=False)
     Phone = Column(String, unique=True, nullable=False)
 
+class Order(Base):
+    __tablename__ = "Order"
+    OrderID = Column(Integer, primary_key=True, autoincrement=True)
+    CustomerID = Column(Integer, ForeignKey('Customer.CustomerID'), nullable=False)
+    StaffID = Column(Integer, ForeignKey('Staff.StaffID'), nullable=False)
+    OrderTime = Column(DateTime, nullable=False)
+    TotalPrice = Column(Float, nullable=False)
+    Status = Column(String, nullable=False)
+
+class Review(Base):
+    __tablename__ = "Review"
+    ReviewID = Column(Integer, primary_key=True, autoincrement=True)
+    CustomerID = Column(Integer, ForeignKey('Customer.CustomerID'), nullable=False)
+    OrderID = Column(Integer, ForeignKey('Order.OrderID'), nullable=False)
+    Rating = Column(Float, nullable=False)
+    Comment = Column(String, nullable=False)
+
 class CustomerCreate(BaseModel):
     Name: str
     Email: str
@@ -57,6 +66,24 @@ class CustomerResponse(BaseModel):
     Name: str
     Email: str
     Phone: str
+
+class OrderResponse(BaseModel):
+    OrderID: int
+    CustomerID: int
+    StaffID: int
+    OrderTime: datetime
+    TotalPrice: float
+    Status:str
+
+class ReviewResponse(BaseModel):
+    ReviewID: int
+    CustomerID: int
+    OrderID: int
+    Rating: float
+    Comment: str
+
+app = FastAPI()
+
 @app.get("/", response_model=List[CustomerResponse])
 async def default(db: Session = Depends(get_db)):
     """
@@ -88,17 +115,6 @@ async def read_customer(customer_id: int, db: Session = Depends(get_db)):
     if customer is None:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
-
-    # select_query = select(customer_table.c.Name, customer_table.c.Email, customer_table.c.Phone).where(customer_table.c.CustomerID == customer_id)
-    # # Execute the query and fetch the result
-    # with engine.connect() as connection:
-    #     result = connection.execute(select_query)
-    #     customer = result.fetchone()
-    #     # rows = result.fetchall()
-    #     print(customer)
-    # if customer is None:
-    #     raise HTTPException(status_code=404, detail="Customer not found")
-    # return {"CustomerID": customer_id, "Name": customer[0], "Email": customer[1], "Phone": customer[2]}
 
 
 @app.post("/api/customer/", response_model=CustomerResponse)
@@ -139,5 +155,20 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     db.delete(db_customer)
     db.commit()
     return CustomerResponse(**db_customer.__dict__)
+
+@app.get("/api/customer/{customer_id}/order", response_model=List[OrderResponse])
+def get_order(customer_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter_by(CustomerID=customer_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    return order
+
+@app.get("/api/customer/{customer_id}/review", response_model=List[ReviewResponse])
+def get_review(customer_id: int, db: Session = Depends(get_db)):
+    review = db.query(Review).filter_by(CustomerID=customer_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail="review not found")
+    return review
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8011)
